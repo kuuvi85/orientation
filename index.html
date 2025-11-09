@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Flip for Secret</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --fg: #e5e7eb;
+      --muted: #9aa0a6;
+      --accent: #60a5fa;
+      --ok: #22c55e;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #ffffff; --fg: #0b0c10; --muted:#6b7280; --accent:#2563eb; --ok:#16a34a; }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(1200px 800px at 50% 0%, rgba(96,165,250,.08), transparent 60%) , var(--bg);
+      color: var(--fg);
+      font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+    }
+    main {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+    }
+    .card {
+      width: min(680px, 92vw);
+      border: 1px solid color-mix(in oklab, var(--fg) 12%, transparent);
+      border-radius: 16px;
+      padding: clamp(1.25rem, 2.5vw, 2rem);
+      background: color-mix(in oklab, var(--bg) 92%, var(--fg));
+      box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    }
+    h1 { margin: 0 0 .5rem; font-weight: 700; letter-spacing: .2px; }
+    p  { margin: .5rem 0 0; color: var(--muted); }
+    .hint { display: inline-flex; gap: .5rem; align-items: center; margin-top: 1rem; }
+    .dot {
+      width: .6rem; height: .6rem; border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 .2rem color-mix(in oklab, var(--muted) 25%, transparent);
+    }
+    .status { font-variant-numeric: tabular-nums; }
+    .secret {
+      margin-top: 1.25rem;
+      padding: 1rem 1.25rem;
+      border-radius: 12px;
+      border: 1px dashed color-mix(in oklab, var(--ok) 45%, transparent);
+      background: color-mix(in oklab, var(--ok) 10%, transparent);
+      color: var(--fg);
+      display: none;
+    }
+    .secret.show { display: block; animation: pop .18s ease-out; }
+    @keyframes pop { from { transform: scale(.98); opacity: .6 } to { transform: scale(1); opacity: 1 } }
+    .perm {
+      margin-top: 1rem;
+      display: none;
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+      background: color-mix(in oklab, var(--accent) 14%, transparent);
+      color: var(--fg);
+      padding: .6rem .9rem;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .footer {
+      margin-top: 1rem;
+      font-size: .875rem;
+      color: var(--muted);
+    }
+    noscript {
+      display: block;
+      margin-top: 1rem;
+      color: #ef4444;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card" aria-live="polite">
+      <h1>Flip your phone to unlock</h1>
+      <p>Turn your device to <strong>portrait upside-down</strong> to reveal the message.</p>
+
+      <div class="hint" role="status" aria-atomic="true">
+        <span class="dot" id="dot" aria-hidden="true"></span>
+        <span class="status" id="status">Waiting for orientation…</span>
+      </div>
+
+      <div class="perm" id="perm">
+        <p>iOS may require permission to read motion/orientation.</p>
+        <button id="ask">Allow motion & orientation</button>
+      </div>
+
+      <noscript>JavaScript is required.</noscript>
+
+      <div class="secret" id="secret" aria-hidden="true">
+        <strong>Secret:</strong> The treasure is buried by the old birch at 60.1699° N, 24.9384° E.
+      </div>
+
+      <div class="footer">Tip: On desktop, resize or rotate the emulator to test.</div>
+    </section>
+  </main>
+
+  <script>
+    // Core logic: show secret when screen is portrait-secondary (180°).
+    const secretEl = document.getElementById('secret');
+    const statusEl = document.getElementById('status');
+    const dotEl = document.getElementById('dot');
+    const permWrap = document.getElementById('perm');
+    const askBtn = document.getElementById('ask');
+
+    let lastDeviceBeta = null;
+
+    function setUI(upsideDown, source = '') {
+      secretEl.classList.toggle('show', upsideDown);
+      secretEl.setAttribute('aria-hidden', String(!upsideDown));
+      dotEl.style.background = upsideDown ? 'var(--ok)' : 'var(--muted)';
+      statusEl.textContent = upsideDown
+        ? `Upside down detected${source ? ' (' + source + ')' : ''}. Secret unlocked.`
+        : `Waiting for upside down${source ? ' (' + source + ')' : ''}…`;
+    }
+
+    function isUpsideDownFromScreen() {
+      try {
+        if (screen.orientation && 'angle' in screen.orientation) {
+          const a = screen.orientation.angle;
+          const t = screen.orientation.type || '';
+          return a === 180 || /portrait-secondary/i.test(t);
+        }
+        if (typeof window.orientation !== 'undefined') {
+          // Legacy iOS: 0, 90, -90, 180
+          const o = Number(window.orientation);
+          return o === 180 || o === -180;
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    function handleScreenChange() {
+      setUI(isUpsideDownFromScreen(), 'screen');
+    }
+
+    // Heuristic fallback using DeviceOrientationEvent (beta ~ ±180 when upside down in portrait)
+    function handleDeviceOrientation(e) {
+      if (typeof e.beta === 'number') lastDeviceBeta = e.beta;
+      const beta = lastDeviceBeta;
+      if (typeof beta === 'number') {
+        const near180 = Math.min(Math.abs(beta - 180), Math.abs(beta + 180));
+        const upside = near180 < 25; // tolerant threshold
+        setUI(upside, 'device');
+      }
+    }
+
+    // Try modern Screen Orientation API first
+    if ('orientation' in screen && screen.orientation) {
+      screen.orientation.addEventListener('change', handleScreenChange);
+      handleScreenChange();
+    } else {
+      // Fallback to legacy orientationchange
+      window.addEventListener('orientationchange', handleScreenChange);
+      handleScreenChange();
+    }
+
+    // Optional fallback for browsers that do not update screen orientation reliably.
+    const needsMotionPermission =
+      typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function';
+
+    function startDeviceOrientation() {
+      window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
+    }
+
+    if (typeof DeviceOrientationEvent !== 'undefined') {
+      if (needsMotionPermission) {
+        permWrap.style.display = 'block';
+        askBtn.addEventListener('click', async () => {
+          try {
+            const res = await DeviceOrientationEvent.requestPermission();
+            if (res === 'granted') {
+              permWrap.style.display = 'none';
+              startDeviceOrientation();
+            } else {
+              statusEl.textContent = 'Permission denied. Using screen orientation only.';
+            }
+          } catch {
+            statusEl.textContent = 'Permission request failed. Using screen orientation only.';
+          }
+        });
+      } else {
+        // Non-iOS or old iOS that does not gate orientation
+        startDeviceOrientation();
+      }
+    }
+
+    // Also re-evaluate on resize; some UAs update angle on viewport changes.
+    window.addEventListener('resize', handleScreenChange);
+  </script>
+</body>
+</html>
