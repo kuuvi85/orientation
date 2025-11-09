@@ -65,17 +65,25 @@
     setInterval(tickTimer, 1000);
     tickTimer();
 
-    // --- Decoy counter button (no unlock effect) ---
+    // --- Decoy counter button (no unlock effect, 5% chance of hint) ---
     const btn = document.getElementById('btn');
     const countEl = document.getElementById('count');
     let clicks = 0;
+
     btn.addEventListener('click', () => {
       clicks += 1;
       countEl.textContent = clicks;
+
+      // 5% chance to show subtle Finnish hint
+      if (Math.random() < 0.05) {
+        alert("Joskus on parempi pudota linjoilta"); // "Sometimes it's better to drop offline"
+      }
+
       // cosmetic micro-feedback
       btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; }, 120);
+      setTimeout(() => { btn.disabled = false; }, 120); 
     });
+
 
     // --- Real unlock: sustained offline (~1.5 s) ---
     const secret = document.getElementById('secret');
